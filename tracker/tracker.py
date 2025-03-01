@@ -85,59 +85,61 @@ class TrackerWorker(QThread):
 		self.settings.set('GENERAL', 'track_on_startup', value)
 	
 	def run(self):
-		
+		"""
+		Main tracking loop to monitor product prices and free shipping availability.
+		"""
 		if self.data.empty:
 			self.status.emit('No hay productos configurados para trackear.', "info", True)
 			return
 		
 		self.status.emit('Iniciando driver...', "info", False)
 		
+		# Initialize WebDriver
 		try:
 			self.driver = Chrome(options=options)
+			self.status.emit('¡Iniciado!', "info", True)
 		except Exception as e:
 			self.status.emit(f'Error al iniciar el WebDriver: {str(e)}', 'error', True)
 			return
-		
-		self.status.emit('¡Iniciado!', "info", True)
 		
 		self.running = True
 		self.updated.emit()
 		
 		while self.running:
-			self.status.emit(f'Trackeando {self.data.shape[0]} productos...', 'info', False)
+			num_products = self.data.shape[0]
+			self.status.emit(f'Trackeando {num_products} productos...', 'info', False)
 			
-			free_mask = self.data['free_ship'] == True
-			previous_free = self.data[free_mask].shape[0]
+			# Track free shipping products
+			free_mask = self.data['free_ship']
+			previous_free_count = free_mask.sum()
+			
+			# Update product information
 			self.data = self.data.apply(self.fetch_product_info, axis=1)
-			new_free = self.data[free_mask].shape[0] - previous_free
+			new_free_count = self.data['free_ship'].sum() - previous_free_count
 			
-			if new_free > 0:
+			if new_free_count > 0:
 				self.status.emit(
-					f'¡{new_free} nuevos productos con envío gratis encontrados!', "info",
-					True
+					f'¡{new_free_count} nuevos productos con envío gratis encontrados!', "info", True
 				)
 			
-			price_changes: DataFrame = self.data['current_price'] != self.data['previous_price']
+			# Track price changes
+			price_changes = self.data['current_price'] != self.data['previous_price']
 			self.save_data()
 			
-			if price_changes.any():
-				for _, row in self.data[price_changes].iterrows():
-					price_diff = round(row["current_price"] - row["previous_price"], 2)
-					change_type = "subió" if price_diff > 0 else "bajó"
-					self.status.emit(
-						f'El precio de {row["product"]} {change_type} a'
-						f' {row["currency"]}{row["current_price"]:,}'
-						f' ({row["currency"]}{price_diff:,})',
-						"error" if price_diff > 0 else "success",
-						True
-					)
+			for _, row in self.data[price_changes].iterrows():
+				price_diff = round(row['current_price'] - row['previous_price'], 2)
+				change_type = "subió" if price_diff > 0 else "bajó"
+				status_level = "error" if price_diff > 0 else "success"
+				self.status.emit(f'El precio de {row["product"]} {change_type}.', status_level, True)
 			
 			self.updated.emit()
 			self.status.emit('En espera...', 'info', False)
+			
+			# Sleep loop with controlled interruption
 			self.sleeping_time_left = self.interval * 2
 			while self.running and self.sleeping_time_left > 0:
-				sleep(.5)
-				self.sleeping_time_left -= 1
+				sleep(0.5)
+				self.sleeping_time_left -= 0.5
 		
 		self.stopping = False
 		self.updated.emit()
@@ -156,72 +158,73 @@ class TrackerWorker(QThread):
 		self.data.to_excel(self.excel_path, index=False)
 	
 	def fetch_product_info(self, row: dict) -> dict:
+		"""
+		Fetch product information from MercadoLibre and update row data.
+		"""
 		try:
 			self.driver.get(row['url'])
 			self.driver.implicitly_wait(1)
 			
+			# Check if MercadoLibre is down
 			if 'Error!' in self.driver.title:
 				self.status.emit('MercadoLibre está en mantenimiento o fuera de servicio.', 'error', True)
-				sys.exit()
+				self.stop()
 			
+			# Check if product is unavailable
 			try:
 				self.driver.find_element(By.ID, 'item_status_short_description_message')
 				row['available'] = False
 				return row
-			except Exception as e:
-				print(e)
+			except Exception:
+				pass
 			
+			# Retrieve currency if missing
+			if isna(row['currency']):
+				try:
+					row['currency'] = self.driver.find_element(
+						By.CLASS_NAME, 'andes-money-amount__currency-symbol'
+					).text
+				except Exception as e:
+					self.status.emit(f'Currency: {e}', 'error', False)
+			
+			# Retrieve product title if missing
+			if isna(row['product']):
+				row['product'] = self.driver.title
+			
+			# Check for free shipping
 			try:
-				
-				if isna(row['currency']):
-					try:
-						row['currency'] = self.driver.find_element(
-							By.CLASS_NAME, 'andes-money-amount__currency-symbol'
-						).text
-					except Exception as e:
-						self.status.emit(f'Currency: {e}', 'error', False)
-				
-				if isna(row['product']):
-					row['product'] = self.driver.title
-				
+				buy_box = self.driver.find_element(By.ID, 'buybox-form')
+				elements = buy_box.find_elements(By.CLASS_NAME, 'ui-pdp-color--GREEN')
+			except Exception:
 				try:
-					buy_box = self.driver.find_element(By.ID, 'buybox-form')
-					elements = buy_box.find_elements(By.CLASS_NAME, 'ui-pdp-color--GREEN')
-					if any(text in el.text for el in elements for text in {'Llega gratis', 'Envío gratis'}):
-						row['free_ship'] = True
-					else:
-						row['free_ship'] = False
-				except Exception:
-					try:
-						shipping_summary = self.driver.find_element(By.ID, 'shipping_summary')
-						elements = shipping_summary.find_elements(By.CLASS_NAME, 'ui-pdp-color--GREEN')
-						if any(text in el.text for el in elements for text in {'Llega gratis',
-						                                                       'Envío gratis'}):
-							row['free_ship'] = True
-						else:
-							row['free_ship'] = False
-					except Exception as e:
-						self.status.emit(f'Free: {e}', 'error', False)
-				
-				try:
-					price_element = self.driver.find_element(By.CLASS_NAME, 'andes-money-amount__fraction')
-					row['previous_price'] = row['current_price']
-					row['current_price'] = float(
-						price_element.text.replace('.', '').replace(',', '.')
-					)
+					shipping_summary = self.driver.find_element(By.ID, 'shipping_summary')
+					elements = shipping_summary.find_elements(By.CLASS_NAME, 'ui-pdp-color--GREEN')
 				except Exception as e:
-					self.status.emit(f'Price: {e}', 'error', False)
-					row['available'] = False
-				
-				try:
-					price_container = self.driver.find_element(By.ID, 'price')
-					price_container.find_element(By.CLASS_NAME, 'andes-money-amount__discount')
-					row['with_discount'] = True
-				except Exception as e:
-					self.status.emit(f'Discount: {e}', 'error', False)
+					self.status.emit(f'Free: {e}', 'error', False)
+					elements = []
 			
+			row['free_ship'] = any(
+				text in el.text for el in elements for text in {'Llega gratis', 'Envío gratis'}
+			)
+			
+			# Retrieve current price
+			try:
+				price_element = self.driver.find_element(By.CLASS_NAME, 'andes-money-amount__fraction')
+				row['previous_price'] = row['current_price']
+				row['current_price'] = float(price_element.text.replace('.', '').replace(',', '.'))
 			except Exception as e:
-				print(e)
-			return row
-		except:
-			return row
+				self.status.emit(f'Price: {e}', 'error', False)
+				row['available'] = False
+			
+			# Check for discount
+			try:
+				price_container = self.driver.find_element(By.ID, 'price')
+				price_container.find_element(By.CLASS_NAME, 'andes-money-amount__discount')
+				row['with_discount'] = True
+			except Exception as e:
+				self.status.emit(f'Discount: {e}', 'error', False)
+		
+		except Exception as e:
+			self.status.emit(f'General error: {e}', 'error', False)
+		
+		return row

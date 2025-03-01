@@ -10,7 +10,7 @@ from PyQt6.QtWidgets import (
 )
 from pandas import DataFrame, concat
 
-from tracker import TrackerWorker
+from tracker.tracker import TrackerWorker
 from widgets._base import CustomBaseWindow
 
 

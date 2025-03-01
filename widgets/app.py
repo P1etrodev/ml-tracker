@@ -3,12 +3,11 @@ from datetime import datetime
 from typing import Literal
 
 import PyQt6.QtWidgets as q
-from PyQt6.QtCore import QSize, QTimer
-from PyQt6.QtGui import QColor
+from PyQt6.QtCore import QSize
 from PyQt6.QtWidgets import QTableWidgetItem
 from winotify import Notification
 
-from tracker import TrackerWorker
+from tracker.tracker import TrackerWorker
 from widgets._base import CustomBaseWindow
 from widgets.settings import SettingsWidget
 from widgets.url_manager import URLManagerWidget

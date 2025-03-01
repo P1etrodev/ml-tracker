@@ -1,7 +1,7 @@
 import PyQt6.QtWidgets as q
 from PyQt6.QtCore import Qt
 
-from tracker import TrackerWorker
+from tracker.tracker import TrackerWorker
 from ._base import CustomBaseWindow
 
 
