@@ -5,12 +5,12 @@ from typing import Literal
 import PyQt6.QtWidgets as q
 from PyQt6.QtCore import QSize, QTimer
 from PyQt6.QtGui import QColor
-from PyQt6.QtWidgets import QTableWidgetItem
-from winotify import Notification
+from PyQt6.QtWidgets import QSystemTrayIcon, QTableWidgetItem
 
 from tracker.tracker import TrackerWorker
 from widgets._base import CustomBaseWindow
 from widgets.settings import SettingsWidget
+from widgets.tray_icon import TrayIcon
 from widgets.url_manager import URLManagerWidget
 
 
@@ -21,6 +21,11 @@ class MainWindow(q.QMainWindow, CustomBaseWindow):
 		
 		self.setWindowTitle("ML Tracker")
 		self.setFixedSize(QSize(800, 500))
+		
+		# ---------------------------------------------------
+		
+		self.tray_icon = TrayIcon(self)
+		self.tray_icon.show_clicked.connect(self.show_window)
 		
 		# ---------------------------------------------------
 		
@@ -293,8 +298,25 @@ class MainWindow(q.QMainWindow, CustomBaseWindow):
 		self.logs.setItemWidget(log_item, item_widget)
 		
 		if notify:
-			Notification(
-				'ML Tracker',
-				'ML Tracker',
-				content
-			).show()
+			self.notify(content)
+	
+	def notify(self, content: str):
+		self.tray_icon.showMessage(
+			"ML Tracker",
+			content,
+			QSystemTrayIcon.MessageIcon.Information,
+			1000
+		)
+	
+	def closeEvent(self, event):
+		"""Interceptar el cierre de la ventana y minimizar a la bandeja en su lugar."""
+		event.ignore()
+		self.tray_icon.show()
+		self.hide()
+		self.notify('La aplicación está funcionando de fondo.')
+	
+	def show_window(self):
+		"""Restaurar la ventana cuando se hace clic en el icono de la bandeja."""
+		self.showNormal()
+		self.activateWindow()
+		self.tray_icon.hide()

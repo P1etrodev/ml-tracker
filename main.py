@@ -13,6 +13,7 @@ with base_path.joinpath('Darkeum.qss').open('r') as f:
 	styles = f.read()
 
 app = q.QApplication(sys.argv)
+app.setQuitOnLastWindowClosed(False)
 app.setStyleSheet(styles)
 
 window = MainWindow()
