@@ -1,8 +1,8 @@
 import PyQt6.QtWidgets as q
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import QSize, Qt
 
 from tracker.tracker import TrackerWorker
-from ._base import CustomBaseWindow
+from widgets._base import CustomBaseWindow
 
 
 class SettingsWidget(CustomBaseWindow):
@@ -12,8 +12,8 @@ class SettingsWidget(CustomBaseWindow):
 		
 		self.tracker = tracker
 		
-		self.setGeometry(100, 100, 300, 200)
 		self.setWindowTitle("Opciones")
+		self.setFixedSize(QSize(300, 200))
 		
 		main_layout = q.QVBoxLayout()
 		self.setLayout(main_layout)
@@ -57,48 +57,6 @@ class SettingsWidget(CustomBaseWindow):
 		choice_4.setChecked(self.tracker.interval == 7200)
 		choice_4.clicked.connect(lambda: self.set_interval(7200))
 		interval_box_layout.addWidget(choice_4)
-		
-		# Log levels
-		log_levels = q.QGroupBox("📜 Logs")
-		main_layout.addWidget(log_levels)
-		
-		log_levels_layout = q.QVBoxLayout()
-		log_levels.setLayout(log_levels_layout)
-		
-		success_checkbox = q.QCheckBox('Success')
-		success_checkbox.setChecked(self.tracker.settings.get('LOGS', 'success', 'bool'))
-		success_checkbox.checkStateChanged.connect(
-			lambda state: self.set_log_level('success', state)
-		)
-		log_levels_layout.addWidget(success_checkbox)
-		
-		warning_checkbox = q.QCheckBox('Warning')
-		warning_checkbox.setChecked(self.tracker.settings.get('LOGS', 'warning', 'bool'))
-		warning_checkbox.checkStateChanged.connect(
-			lambda state: self.set_log_level('warning', state)
-		)
-		log_levels_layout.addWidget(warning_checkbox)
-		
-		error_checkbox = q.QCheckBox('Error')
-		error_checkbox.setChecked(self.tracker.settings.get('LOGS', 'error', 'bool'))
-		error_checkbox.checkStateChanged.connect(
-			lambda state: self.set_log_level('error', state)
-		)
-		log_levels_layout.addWidget(error_checkbox)
-		
-		info_checkbox = q.QCheckBox('Info')
-		info_checkbox.setChecked(self.tracker.settings.get('LOGS', 'info', 'bool'))
-		info_checkbox.checkStateChanged.connect(
-			lambda state: self.set_log_level('info', state)
-		)
-		log_levels_layout.addWidget(info_checkbox)
-		
-		debug_checkbox = q.QCheckBox('Debug')
-		debug_checkbox.setChecked(self.tracker.settings.get('LOGS', 'debug', 'bool'))
-		debug_checkbox.checkStateChanged.connect(
-			lambda state: self.set_log_level('debug', state)
-		)
-		log_levels_layout.addWidget(debug_checkbox)
 	
 	def set_interval(self, interval: int):
 		self.tracker.interval = interval
